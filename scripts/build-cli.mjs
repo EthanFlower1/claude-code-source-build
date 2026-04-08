@@ -175,10 +175,34 @@ const publicMacroValues = {
 const extraOverlayPackages = new Set();
 const stubExportAugmentations = new Map();
 const enabledBundleFeatures = new Set([
+  // Base (known working with 4 flags)
   'BUILDING_CLAUDE_APPS',
   'BASH_CLASSIFIER',
   'TRANSCRIPT_CLASSIFIER',
   'CHICAGO_MCP',
+  'BUILTIN_EXPLORE_PLAN_AGENTS',
+  'COORDINATOR_MODE',
+  // Batch 2a: first half
+  'TOKEN_BUDGET',
+  'COMPACTION_REMINDERS',
+  'PROMPT_CACHE_BREAK_DETECTION',
+  'TREE_SITTER_BASH',
+  'TREE_SITTER_BASH_SHADOW',
+  'ULTRATHINK',
+  'EXTRACT_MEMORIES',
+  'TEAMMEM',
+  'AGENT_MEMORY_SNAPSHOT',
+  // Batch 2b (testing first 4)
+  'MCP_SKILLS',
+  'MCP_RICH_OUTPUT',
+  'SKILL_IMPROVEMENT',
+  'MESSAGE_ACTIONS',
+  'AUTO_THEME',
+  'COMMIT_ATTRIBUTION',
+  'DUMP_SYSTEM_PROMPT',
+  // 'BUDDY', // HANGS in -p mode
+  'NATIVE_CLIPBOARD_IMAGE',
+  // ALL EXTRAS DISABLED — testing base 4 flags only
 ]);
 
 main();
@@ -340,6 +364,7 @@ function generateWorkspaceAugmentations() {
   ensureUnavailablePackageEntries();
   patchMissingExports();
   patchFeatureFlags();
+  patchNestedAgents();
 }
 
 /**
@@ -606,6 +631,19 @@ function patchFeatureFlags() {
     if (updated !== contents) {
       fs.writeFileSync(filePath, updated, 'utf8');
     }
+  }
+}
+
+function patchNestedAgents() {
+  // Allow sub-agents to spawn their own sub-agents (was ant-only)
+  const toolsPath = path.join(workspaceRoot, 'src/constants/tools.ts');
+  if (!isFile(toolsPath)) return;
+  const contents = fs.readFileSync(toolsPath, 'utf8');
+  const needle = `...(process.env.USER_TYPE === 'ant' ? [] : [AGENT_TOOL_NAME]),`;
+  if (contents.includes(needle)) {
+    const updated = contents.replace(needle,
+      `// HACK: nested agents enabled for all users\n  // ${needle}`);
+    fs.writeFileSync(toolsPath, updated, 'utf8');
   }
 }
 
