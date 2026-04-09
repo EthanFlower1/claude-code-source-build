@@ -84,7 +84,7 @@ function getInboxSources(appState: AppState): Array<{ agentName: string; teamNam
   }
 
   // If we have explicit team memberships, use them (multi-team agents)
-  if (appState.teamMemberships.length > 0) {
+  if (appState.teamMemberships?.length > 0) {
     return appState.teamMemberships.map(m => ({
       agentName: m.agentName,
       teamName: m.teamName,

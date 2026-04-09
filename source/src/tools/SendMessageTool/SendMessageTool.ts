@@ -683,11 +683,12 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         // Validate team parameter if provided
         if (input.team) {
           const appState = context.getAppState()
-          const isMember = appState.teamMemberships.some(m => m.teamName === input.team)
+          const memberships = appState.teamMemberships ?? []
+          const isMember = memberships.some(m => m.teamName === input.team)
           if (!isMember) {
             return {
               result: false,
-              message: `You are not a member of team "${input.team}". Your teams: ${appState.teamMemberships.map(m => m.teamName).join(', ') || 'none'}`,
+              message: `You are not a member of team "${input.team}". Your teams: ${memberships.map(m => m.teamName).join(', ') || 'none'}`,
               errorCode: 9,
             }
           }
