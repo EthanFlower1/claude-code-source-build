@@ -83,6 +83,12 @@ const inputSchema = lazySchema(() =>
       z.string().describe('Plain text message content'),
       StructuredMessage(),
     ]),
+    team: z
+      .string()
+      .optional()
+      .describe(
+        'Which team to route through. Required when you belong to multiple teams. Omit if you only belong to one team.',
+      ),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -151,9 +157,10 @@ async function handleMessage(
   content: string,
   summary: string | undefined,
   context: ToolUseContext,
+  teamOverride?: string,
 ): Promise<{ data: MessageOutput }> {
   const appState = context.getAppState()
-  const teamName = getTeamName(appState.teamContext)
+  const teamName = teamOverride || getTeamName(appState.teamContext)
   const senderName =
     getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
   const senderColor = getTeammateColor()
@@ -175,7 +182,7 @@ async function handleMessage(
   return {
     data: {
       success: true,
-      message: `Message sent to ${recipientName}'s inbox`,
+      message: `Message sent to ${recipientName}'s inbox` + (teamOverride ? ` (via team: ${teamOverride})` : ''),
       routing: {
         sender: senderName,
         senderColor,
@@ -192,9 +199,10 @@ async function handleBroadcast(
   content: string,
   summary: string | undefined,
   context: ToolUseContext,
+  teamOverride?: string,
 ): Promise<{ data: BroadcastOutput }> {
   const appState = context.getAppState()
-  const teamName = getTeamName(appState.teamContext)
+  const teamName = teamOverride || getTeamName(appState.teamContext)
 
   if (!teamName) {
     throw new Error(
@@ -601,7 +609,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
       return { behavior: 'allow' as const, updatedInput: input }
     },
 
-    async validateInput(input, _context) {
+    async validateInput(input, context) {
       if (input.to.trim().length === 0) {
         return {
           result: false,
@@ -670,6 +678,18 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             result: false,
             message: 'summary is required when message is a string',
             errorCode: 9,
+          }
+        }
+        // Validate team parameter if provided
+        if (input.team) {
+          const appState = context.getAppState()
+          const isMember = appState.teamMemberships.some(m => m.teamName === input.team)
+          if (!isMember) {
+            return {
+              result: false,
+              message: `You are not a member of team "${input.team}". Your teams: ${appState.teamMemberships.map(m => m.teamName).join(', ') || 'none'}`,
+              errorCode: 9,
+            }
           }
         }
         return { result: true }
@@ -875,9 +895,9 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
 
       if (typeof input.message === 'string') {
         if (input.to === '*') {
-          return handleBroadcast(input.message, input.summary, context)
+          return handleBroadcast(input.message, input.summary, context, input.team)
         }
-        return handleMessage(input.to, input.message, input.summary, context)
+        return handleMessage(input.to, input.message, input.summary, context, input.team)
       }
 
       if (input.to === '*') {
