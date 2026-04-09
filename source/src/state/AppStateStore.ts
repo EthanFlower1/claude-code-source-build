@@ -343,6 +343,12 @@ export type AppState = DeepImmutable<{
       }
     }
   }
+  // Tracks all teams this agent participates in (for multi-team agents like squad leads)
+  teamMemberships: Array<{
+    teamName: string
+    agentName: string
+    role: 'leader' | 'teammate'
+  }>
   // Standalone agent context for non-swarm sessions with custom name/color
   standaloneAgentContext?: {
     name: string
@@ -539,6 +545,7 @@ export function getDefaultAppState(): AppState {
     thinkingEnabled: shouldEnableThinkingByDefault(),
     promptSuggestionEnabled: shouldEnablePromptSuggestion(),
     sessionHooks: new Map(),
+    teamMemberships: [],
     inbox: {
       messages: [],
     },
