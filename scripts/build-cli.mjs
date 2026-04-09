@@ -365,6 +365,7 @@ function generateWorkspaceAugmentations() {
   patchMissingExports();
   patchFeatureFlags();
   patchNestedAgents();
+  patchAgentSwarmsEnabled();
 }
 
 /**
@@ -644,6 +645,21 @@ function patchNestedAgents() {
     const updated = contents.replace(needle,
       `// HACK: nested agents enabled for all users\n  // ${needle}`);
     fs.writeFileSync(toolsPath, updated, 'utf8');
+  }
+}
+
+function patchAgentSwarmsEnabled() {
+  const filePath = path.join(workspaceRoot, 'src/utils/agentSwarmsEnabled.ts');
+  if (!isFile(filePath)) return;
+  const contents = fs.readFileSync(filePath, 'utf8');
+  // Replace the function body to always return true
+  const needle = `if (process.env.USER_TYPE === 'ant')`;
+  if (contents.includes(needle)) {
+    const updated = contents.replace(
+      /export function isAgentSwarmsEnabled\(\): boolean \{[\s\S]*?\n\}/,
+      'export function isAgentSwarmsEnabled(): boolean {\n  return true\n}',
+    );
+    fs.writeFileSync(filePath, updated, 'utf8');
   }
 }
 
