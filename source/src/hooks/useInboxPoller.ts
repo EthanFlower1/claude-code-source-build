@@ -72,36 +72,40 @@ import {
 } from './useSwarmPermissionPoller.js'
 
 /**
- * Get the agent name to poll for messages.
- * - In-process teammates return undefined (they use waitForNextPromptOrShutdown instead)
- * - Process-based teammates use their CLAUDE_CODE_AGENT_NAME
- * - Team leads use their name from teamContext.teammates
- * - Standalone sessions return undefined
+ * Get all inbox sources this agent should poll.
+ * Returns an array of { agentName, teamName } pairs.
+ * - In-process teammates return empty (they use waitForNextPromptOrShutdown)
+ * - Process-based agents return one entry per team membership
+ * - Standalone sessions return empty
  */
-function getAgentNameToPoll(appState: AppState): string | undefined {
-  // In-process teammates should NOT use useInboxPoller - they have their own
-  // polling mechanism via waitForNextPromptOrShutdown() in inProcessRunner.ts.
-  // Using useInboxPoller would cause message routing issues since in-process
-  // teammates share the same React context and AppState with the leader.
-  //
-  // Note: This can be called when the leader's REPL re-renders while an
-  // in-process teammate's AsyncLocalStorage context is active (due to shared
-  // setAppState). We return undefined to gracefully skip polling rather than
-  // throwing, since this is a normal occurrence during concurrent execution.
+function getInboxSources(appState: AppState): Array<{ agentName: string; teamName: string }> {
   if (isInProcessTeammate()) {
-    return undefined
+    return []
   }
+
+  // If we have explicit team memberships, use them (multi-team agents)
+  if (appState.teamMemberships.length > 0) {
+    return appState.teamMemberships.map(m => ({
+      agentName: m.agentName,
+      teamName: m.teamName,
+    }))
+  }
+
+  // Fallback: single-team behavior (backward compatible)
   if (isTeammate()) {
-    return getAgentName()
+    const name = getAgentName()
+    const team = appState.teamContext?.teamName
+    if (name && team) return [{ agentName: name, teamName: team }]
   }
-  // Team lead polls using their agent name (not ID)
+
   if (isTeamLead(appState.teamContext)) {
     const leadAgentId = appState.teamContext!.leadAgentId
-    // Look up the lead's name from teammates map
-    const leadName = appState.teamContext!.teammates[leadAgentId]?.name
-    return leadName || 'team-lead'
+    const leadName = appState.teamContext!.teammates[leadAgentId]?.name || 'team-lead'
+    const team = appState.teamContext!.teamName
+    return [{ agentName: leadName, teamName: team }]
   }
-  return undefined
+
+  return []
 }
 
 const INBOX_POLL_INTERVAL_MS = 1000
@@ -141,13 +145,18 @@ export function useInboxPoller({
 
     // Use ref to avoid dependency on appState object (prevents infinite loop)
     const currentAppState = store.getState()
-    const agentName = getAgentNameToPoll(currentAppState)
-    if (!agentName) return
+    const inboxSources = getInboxSources(currentAppState)
+    if (inboxSources.length === 0) return
 
-    const unread = await readUnreadMessages(
-      agentName,
-      currentAppState.teamContext?.teamName,
-    )
+    // Read unread messages from all inboxes this agent participates in
+    const allUnread: Array<TeammateMessage & { _team: string }> = []
+    for (const source of inboxSources) {
+      const messages = await readUnreadMessages(source.agentName, source.teamName)
+      for (const m of messages) {
+        allUnread.push({ ...m, _team: source.teamName })
+      }
+    }
+    const unread = allUnread
 
     if (unread.length === 0) return
 
@@ -198,7 +207,9 @@ export function useInboxPoller({
     // Helper to mark messages as read in the inbox file.
     // Called after messages are successfully delivered or reliably queued.
     const markRead = () => {
-      void markMessagesAsRead(agentName, currentAppState.teamContext?.teamName)
+      for (const source of inboxSources) {
+        void markMessagesAsRead(source.agentName, source.teamName)
+      }
     }
 
     // Separate permission messages from regular teammate messages
@@ -883,8 +894,8 @@ export function useInboxPoller({
 
     // Use ref to avoid dependency on appState object (prevents infinite loop)
     const currentAppState = store.getState()
-    const agentName = getAgentNameToPoll(currentAppState)
-    if (!agentName) return
+    const inboxSources = getInboxSources(currentAppState)
+    if (inboxSources.length === 0) return
 
     const pendingMessages = currentAppState.inbox.messages.filter(
       m => m.status === 'pending',
@@ -950,7 +961,7 @@ export function useInboxPoller({
   ])
 
   // Poll if running as a teammate or as a team lead
-  const shouldPoll = enabled && !!getAgentNameToPoll(store.getState())
+  const shouldPoll = enabled && getInboxSources(store.getState()).length > 0
   useInterval(() => void poll(), shouldPoll ? INBOX_POLL_INTERVAL_MS : null)
 
   // Initial poll on mount (only once)
@@ -959,7 +970,7 @@ export function useInboxPoller({
     if (!enabled) return
     if (hasDoneInitialPollRef.current) return
     // Use store.getState() to avoid dependency on appState object
-    if (getAgentNameToPoll(store.getState())) {
+    if (getInboxSources(store.getState()).length > 0) {
       hasDoneInitialPollRef.current = true
       void poll()
     }
