@@ -190,6 +190,19 @@ export async function spawnInProcessTeammate(
     // Register task in AppState
     registerTask(taskState, setAppState)
 
+    // Track this teammate's membership in the leader's AppState
+    setAppState(prev => ({
+      ...prev,
+      teamMemberships: [
+        ...prev.teamMemberships,
+        {
+          teamName: teamName,
+          agentName: name,
+          role: 'teammate' as const,
+        },
+      ],
+    }))
+
     logForDebugging(
       `[spawnInProcessTeammate] Registered ${agentId} in AppState`,
     )

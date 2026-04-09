@@ -82,6 +82,19 @@ export function initializeTeammateHooks(
   const leadMember = teamFile.members.find(m => m.agentId === leadAgentId)
   const leadAgentName = leadMember?.name || 'team-lead'
 
+  // Track this agent's membership in the team
+  setAppState(prev => ({
+    ...prev,
+    teamMemberships: [
+      ...prev.teamMemberships,
+      {
+        teamName: teamName,
+        agentName: agentName,
+        role: 'teammate' as const,
+      },
+    ],
+  }))
+
   // Don't register hook if this agent is the leader
   if (agentId === leadAgentId) {
     logForDebugging(
