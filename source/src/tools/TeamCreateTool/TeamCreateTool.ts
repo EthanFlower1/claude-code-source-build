@@ -15,6 +15,7 @@ import {
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getResolvedTeammateMode } from '../../utils/swarm/backends/registry.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
+import { isTeamLead } from '../../utils/teammate.js'
 import type { TeamFile } from '../../utils/swarm/teamHelpers.js'
 import {
   getTeamFilePath,
@@ -133,7 +134,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     const appState = getAppState()
     const existingTeam = appState.teamContext?.teamName
 
-    if (existingTeam) {
+    if (existingTeam && isTeamLead(appState.teamContext)) {
       throw new Error(
         `Already leading team "${existingTeam}". A leader can only manage one team at a time. Use TeamDelete to end the current team before creating a new one.`,
       )
@@ -209,6 +210,15 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
           },
         },
       },
+      // Track this team in memberships for multi-inbox polling
+      teamMemberships: [
+        ...prev.teamMemberships,
+        {
+          teamName: finalTeamName,
+          agentName: TEAM_LEAD_NAME,
+          role: 'leader' as const,
+        },
+      ],
     }))
 
     logEvent('tengu_team_created', {
